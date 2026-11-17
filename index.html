@@ -182,6 +182,7 @@ const MAPA_ZOOM = 10;
 
 const SITUACOES = {
   execucao:    { nome: "Em execução",     cor: "#2e8b57" },
+  entregue:    { nome: "Obra entregue",   cor: "#86d99a" },
   projeto:     { nome: "Em projeto",      cor: "#2b6cb0" },
   licitacao:   { nome: "Em licitação",    cor: "#d69e2e" },
   sem_processo:{ nome: "Sem processo",    cor: "#718096" }
@@ -230,6 +231,7 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const nz = (v) => (v === "" || v == null || isNaN(+v)) ? null : +v;
 const brl = (v) => nz(v) == null ? "—" : (+v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const pct = (v) => v == null || !isFinite(v) ? "—" : v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
+const dtBR = (v) => v ? String(v).split("-").reverse().join("/") : "—";
 const pad2 = (n) => String(n).padStart(2, "0");
 const dias = (v) => v == null ? "—" : `${v.toLocaleString("pt-BR")} dia${v === 1 ? "" : "s"}`;
 
@@ -320,6 +322,7 @@ function popupHtml(id, o) {
       <tr><td>Tipo</td><td>${esc(o.tipo || "—")}</td></tr>
       <tr><td>Localidade</td><td>${esc(o.localidade || "—")}</td></tr>
       ${attn}${exec}
+      ${o.situacao === "entregue" ? `<tr><td>Entregue em</td><td>${esc(dtBR(o.entregueEm))}</td></tr>` : ""}
       ${o.empresa ? `<tr><td>Empresa</td><td>${esc(o.empresa)}</td></tr>` : ""}
     </table>
     <div class="actions"><button class="btn small primary" data-ficha="${esc(id)}">Ver ficha completa</button>
@@ -369,6 +372,7 @@ async function abrirFicha(id) {
     </table></div>
 
     <div class="fsec"><h4>Acompanhamento</h4><table>
+      ${o.situacao === "entregue" ? kv("Entregue em", esc(dtBR(o.entregueEm))) : ""}
       ${kv("Engenheiro fiscal", esc(o.fiscal || "—"))}
       ${kv("Andamento da obra", esc(ANDAMENTOS[o.andamento || ""]))}
       ${kv("% físico executado", nz(o.percentual) == null ? "—" : pct(+o.percentual), "num")}
@@ -491,6 +495,7 @@ async function abrirForm(id, rascunho) {
       <div><label>Longitude *</label><input id="f_lng" value="${esc(o.lng ?? "")}" placeholder="-40.6777"></div>
       <div class="full"><button class="btn" type="button" id="f_pick">📍 Escolher no mapa</button></div>
       <div><label>Situação (cor no mapa)</label>${sel("f_sit", o.situacao, Object.entries(SITUACOES).map(([k, s]) => [k, s.nome]))}</div>
+      <div id="f_entbox" style="display:${o.situacao === "entregue" ? "" : "none"}"><label>Entregue em</label><input id="f_ent" type="date" value="${esc(o.entregueEm || "")}"></div>
       <div><label>Situação da obra (andamento)</label>${sel("f_and", o.andamento || "", Object.entries(ANDAMENTOS))}</div>
       <div><label>% físico executado</label><input id="f_pct" type="number" min="0" max="100" step="0.01" value="${esc(o.percentual ?? "")}"></div>
       <div><label>Empresa</label><input id="f_emp" value="${esc(o.empresa || "")}"></div>
@@ -562,7 +567,7 @@ async function abrirForm(id, rascunho) {
   const lerForm = () => ({
     nome: $("#f_nome").value.trim(), tipo: $("#f_tipo").value.trim(), localidade: $("#f_loc").value.trim(),
     lat: $("#f_lat").value.replace(",", "."), lng: $("#f_lng").value.replace(",", "."),
-    situacao: $("#f_sit").value, andamento: $("#f_and").value, percentual: numOuVazio("#f_pct"),
+    situacao: $("#f_sit").value, entregueEm: $("#f_sit").value === "entregue" ? $("#f_ent").value : "", andamento: $("#f_and").value, percentual: numOuVazio("#f_pct"),
     empresa: $("#f_emp").value.trim(), processo: $("#f_proc").value.trim(), contrato: $("#f_con").value.trim(),
     valorOriginal: numOuVazio("#f_vo"), aditivosServico: adS.map((a) => ({ valor: a.valor === "" ? 0 : +a.valor, obs: a.obs })),
     prazoOriginal: numOuVazio("#f_po"), aditivosPrazo: adP.map((a) => ({ dias: a.dias === "" ? 0 : +a.dias, obs: a.obs })),
@@ -629,6 +634,7 @@ async function abrirForm(id, rascunho) {
   $("#sheet").querySelectorAll("fieldset input:not([type=file]),fieldset select,fieldset textarea").forEach((el) => el.addEventListener("input", prev));
   prev();
 
+  $("#f_sit").onchange = () => { $("#f_entbox").style.display = $("#f_sit").value === "entregue" ? "" : "none"; };
   $("#f_cancel").onclick = () => $("#modal").classList.remove("open");
   $("#f_pick").onclick = () => {
     const rasc = lerForm(); if (fotoNova !== undefined) rasc._foto = fotoNova;
@@ -715,13 +721,13 @@ $("#btnSeed").onclick = async () => {
 
 /* ---- exportar CSV (respeita os filtros atuais) ---- */
 $("#btnCsv").onclick = () => {
-  const cab = ["Nome", "Tipo", "Localidade", "Situação", "Andamento", "Nível de atenção", "Pontos", "Nº processo", "Contrato", "Empresa",
+  const cab = ["Nome", "Tipo", "Localidade", "Situação", "Entregue em", "Andamento", "Nível de atenção", "Pontos", "Nº processo", "Contrato", "Empresa",
     "Valor original", "Nº aditivos serviço", "Valor aditivos", "% aditivada", "Valor atual", "Prazo original (dias)", "Nº aditivos prazo", "Prazo com aditivos (dias)",
     "Engenheiro fiscal", "Nº notificações", "Medição atual", "Valor medido", "Valor última medição", "Saldo contratual", "% físico", "Latitude", "Longitude", "Observações"];
   const lin = filtradas().map(([, o]) => {
     const sp = o.situacao === "sem_processo", nvo = nivelObra(o), p = sp && nvo.n.id !== "naoav" ? nvo.p : "", k = calc(o);
     const f2 = (v) => v == null ? "" : String(Math.round(v * 100) / 100).replace(".", ",");
-    return [o.nome, o.tipo, o.localidade, SITUACOES[o.situacao]?.nome, ANDAMENTOS[o.andamento || ""], sp ? nvo.n.nome : "", p, o.processo, o.contrato, o.empresa,
+    return [o.nome, o.tipo, o.localidade, SITUACOES[o.situacao]?.nome, o.situacao === "entregue" ? dtBR(o.entregueEm) : "", ANDAMENTOS[o.andamento || ""], sp ? nvo.n.nome : "", p, o.processo, o.contrato, o.empresa,
       f2(k.vo), k.linhas.length, f2(k.vo != null || k.linhas.length ? k.totAd : null), f2(k.pctTotal), f2(k.vAtual), k.prazoOr ?? "", k.adp.length, k.prazoTotal ?? "",
       o.fiscal, o.notificacoes, o.medicaoAtual, f2(k.vm), f2(nz(o.valorUltimaMedicao)), f2(k.saldo), o.percentual, o.lat, o.lng, o.observacoes];
   });
