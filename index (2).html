@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mapa de Obras – Secretaria de Educação</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{
+  --bg:#f4f6f8; --card:#fff; --ink:#1a202c; --muted:#64748b; --line:#e2e8f0; --brand:#1e3a5f;
+  --execucao:#2e8b57; --projeto:#2b6cb0; --licitacao:#d69e2e; --sem:#718096;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg)}
+button{font:inherit;cursor:pointer}
+.app{display:grid;grid-template-rows:auto 1fr;height:100%}
+header{background:var(--brand);color:#fff;padding:10px 16px;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+header h1{font-size:17px;margin:0;font-weight:650}
+header .sub{font-size:12px;opacity:.75}
+.counters{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+.chip{border:2px solid transparent;background:rgba(255,255,255,.12);color:#fff;border-radius:999px;padding:5px 12px;font-size:13px;display:flex;align-items:center;gap:7px}
+.chip .dot{width:11px;height:11px;border-radius:50%;display:inline-block}
+.chip.off{opacity:.4}
+.chip b{font-size:14px}
+.userbox{display:flex;align-items:center;gap:8px;font-size:12px}
+.userbox button{background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:6px;padding:5px 9px}
+main{display:grid;grid-template-columns:340px 1fr;min-height:0}
+aside{background:var(--card);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.tools{padding:10px;border-bottom:1px solid var(--line);display:grid;gap:8px}
+.tools input,.tools select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fff}
+.row{display:flex;gap:6px}
+.btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 10px;font-size:13px}
+.btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+.btn.danger{color:#c53030;border-color:#feb2b2}
+.btn.small{padding:4px 8px;font-size:12px}
+.btn:hover{filter:brightness(.96)}
+.list{overflow:auto;flex:1}
+.item{padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+.item:hover{background:#f7fafc}
+.item .t{font-weight:600;font-size:14px}
+.item .m{font-size:12px;color:var(--muted);margin-top:2px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:2px 8px;border-radius:999px;background:#edf2f7;color:#2d3748}
+.tag i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.tag.warn{background:#fed7d7;color:#9b2c2c}
+.lvl{font-weight:700}
+.lvl.baixo{color:#718096}.lvl.medio{color:#b7791f}.lvl.alto{color:#c05621}.lvl.critico{color:#c53030}
+#map{height:100%;width:100%;min-height:300px}
+.pin{width:22px;height:22px;border-radius:50%;border:4px solid #fff;box-shadow:0 0 0 2px rgba(0,0,0,.25),0 1px 4px rgba(0,0,0,.4)}
+.pin.pulse{animation:pulse 1.6s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 2px rgba(0,0,0,.25),0 0 0 0 rgba(229,62,62,.7)}100%{box-shadow:0 0 0 2px rgba(0,0,0,.25),0 0 0 14px rgba(229,62,62,0)}}
+.legend{background:#fff;padding:8px 10px;border-radius:8px;box-shadow:0 1px 5px rgba(0,0,0,.3);font-size:12px;line-height:1.7}
+.legend .sw{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.legend .ring{display:inline-block;width:13px;height:13px;border-radius:50%;margin-right:6px;vertical-align:-2px;background:#fff}
+.popup h3{margin:0 0 4px;font-size:15px}
+.popup table{border-collapse:collapse;font-size:12px;margin-top:6px;width:100%}
+.popup td{padding:2px 0;vertical-align:top}.popup td:first-child{color:var(--muted);padding-right:10px;white-space:nowrap}
+.popup .actions{margin-top:8px;display:flex;gap:6px}
+.bar{height:7px;border-radius:4px;background:#e2e8f0;overflow:hidden;margin-top:3px}.bar>div{height:100%;background:var(--execucao)}
+.modal{position:fixed;inset:0;background:rgba(15,23,42,.55);display:none;align-items:center;justify-content:center;z-index:2000;padding:12px}
+.modal.open{display:flex}
+.sheet{background:#fff;border-radius:12px;max-width:680px;width:100%;max-height:94vh;overflow:auto;padding:18px}
+.sheet.wide{max-width:820px}
+.sheet h2{margin:0 0 12px;font-size:18px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid .full{grid-column:1/-1}
+label{font-size:12px;color:var(--muted);display:block;margin-bottom:3px}
+.sheet input,.sheet select,.sheet textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit}
+.sheet textarea{resize:vertical}
+.sheet fieldset{border:1px solid var(--line);border-radius:10px;margin:12px 0 0;padding:10px}
+.sheet legend{font-size:12px;color:var(--muted);padding:0 6px;font-weight:600}
+.preview{margin-top:10px;padding:10px;border-radius:8px;background:#f7fafc;font-size:13px}
+.foot{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+.arow{display:grid;grid-template-columns:90px 1fr 1fr 90px 34px;gap:6px;align-items:center;margin-bottom:6px}
+.arow.p{grid-template-columns:90px 1fr 1fr 34px}
+.arow .n{font-size:13px;font-weight:600}
+.arow .pc{font-size:12px;color:var(--muted);text-align:right}
+.arow button{padding:4px 0}
+.fotoprev img{max-width:100%;max-height:220px;border-radius:8px;display:block;margin-top:8px;border:1px solid var(--line)}
+/* ficha */
+.fh{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.fh h2{margin:0 8px 0 0}
+.fsec{border:1px solid var(--line);border-radius:10px;margin-top:10px;overflow:hidden}
+.fsec h4{margin:0;padding:7px 12px;background:#f1f5f9;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#475569}
+.fsec table{width:100%;border-collapse:collapse;font-size:13px}
+.fsec td{padding:6px 12px;border-top:1px solid var(--line);vertical-align:top}
+.fsec td:first-child{color:var(--muted);width:42%}
+.fsec td.num{font-variant-numeric:tabular-nums}
+.adlist div{padding:1px 0}
+.obsbox{border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px;background:#fffdf5;white-space:pre-wrap;min-height:90px;font-size:14px;line-height:1.5}
+.fotobox img{width:100%;max-height:300px;object-fit:cover;border-radius:10px;display:block;margin-top:10px;border:1px solid var(--line)}
+#login{position:fixed;inset:0;background:var(--brand);display:flex;align-items:center;justify-content:center;z-index:3000;padding:16px}
+#login form{background:#fff;border-radius:14px;padding:24px;max-width:360px;width:100%;display:grid;gap:10px}
+#login h2{margin:0;font-size:19px}
+#login p{margin:0;font-size:13px;color:var(--muted)}
+#login input{padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit}
+.err{color:#c53030;font-size:13px;min-height:18px}
+.hist div{padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.hist small{color:var(--muted)}
+.pickbanner{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#1a202c;color:#fff;padding:8px 14px;border-radius:999px;z-index:1000;font-size:13px;display:none}
+.mapwrap{position:relative;min-height:0}
+@media(max-width:820px){main{grid-template-columns:1fr;grid-template-rows:55vh auto}aside{order:2;border-right:0;border-top:1px solid var(--line)}.counters{margin-left:0}.arow{grid-template-columns:70px 1fr 1fr}.arow .pc,.arow button{grid-column:auto}}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <form id="loginForm">
+    <h2>Mapa de Obras</h2>
+    <p>Secretaria de Educação · acesso restrito. Entre com o e-mail e a senha fornecidos.</p>
+    <input id="lemail" type="email" placeholder="E-mail" autocomplete="username" required>
+    <input id="lsenha" type="password" placeholder="Senha" autocomplete="current-password" required>
+    <div class="err" id="lerr"></div>
+    <button class="btn primary" type="submit">Entrar</button>
+    <button class="btn" type="button" id="lreset">Esqueci a senha</button>
+  </form>
+</div>
+
+<div class="app">
+  <header>
+    <div>
+      <h1>Mapa de Obras · Secretaria de Educação</h1>
+      <div class="sub" id="sub">Carregando…</div>
+    </div>
+    <div class="counters" id="counters"></div>
+    <div class="userbox"><span id="who"></span><button id="logout">Sair</button></div>
+  </header>
+
+  <main>
+    <aside>
+      <div class="tools">
+        <input id="q" type="search" placeholder="Buscar escola, localidade, empresa, processo…">
+        <div class="row">
+          <select id="nivelMin" title="Filtra apenas as obras sem processo">
+            <option value="0">Atenção: todos os níveis</option>
+            <option value="1">Médio ou mais</option>
+            <option value="2">Alto ou mais</option>
+            <option value="3">Somente crítico</option>
+          </select>
+          <select id="base">
+            <option value="osm">Ruas</option>
+            <option value="sat">Satélite</option>
+          </select>
+        </div>
+        <div class="row" id="editorTools" style="display:none">
+          <button class="btn primary" id="btnNova">+ Nova obra</button>
+          <button class="btn" id="btnHist">Histórico</button>
+          <button class="btn" id="btnSeed" style="display:none">Dados de exemplo</button>
+        </div>
+        <div class="row"><button class="btn" id="btnCsv">Exportar lista (CSV)</button></div>
+      </div>
+      <div class="list" id="list"></div>
+    </aside>
+    <div class="mapwrap"><div id="map"></div><div class="pickbanner" id="pickbanner">Clique no mapa para marcar a localização</div></div>
+  </main>
+</div>
+
+<div class="modal" id="modal"><div class="sheet" id="sheet"></div></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, deleteDoc, onSnapshot,
+  query, orderBy, limit, serverTimestamp, writeBatch }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* ============================================================
+   1) CONFIGURAÇÃO DO FIREBASE
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyC_XpO_WY_FMtXKj2m0g9wtCY-fh44d_OY",
+  authDomain: "obras-pmc-sme.firebaseapp.com",
+  projectId: "obras-pmc-sme",
+  appId: "1:70951433359:web:56ba943027e09589826cfa"
+};
+
+/* ============================================================
+   2) PARÂMETROS (ajuste à vontade)
+   ============================================================ */
+const MAPA_CENTRO = [-5.1678, -40.6777];  // Crateús/CE
+const MAPA_ZOOM = 10;
+
+const SITUACOES = {
+  execucao:    { nome: "Em execução",     cor: "#2e8b57" },
+  projeto:     { nome: "Em projeto",      cor: "#2b6cb0" },
+  licitacao:   { nome: "Em licitação",    cor: "#d69e2e" },
+  sem_processo:{ nome: "Sem processo",    cor: "#718096" }
+};
+const ANDAMENTOS = {
+  "":          "—",
+  nao_iniciada:"Não iniciada",
+  andamento:   "Em andamento",
+  paralisada:  "Paralisada",
+  concluida:   "Concluída / aguardando recebimento",
+  recebida:    "Recebida"
+};
+const NIVEIS = [
+  { id: "baixo",   nome: "Baixo",   cor: "#cbd5e0", min: 0 },
+  { id: "medio",   nome: "Médio",   cor: "#ecc94b", min: 5 },
+  { id: "alto",    nome: "Alto",    cor: "#ed8936", min: 9 },
+  { id: "critico", nome: "Crítico", cor: "#e53e3e", min: 13 }
+];
+const CONDICOES = ["Bom", "Regular", "Ruim", "Crítico"];  // pontos 0..3
+function pontuar(c = {}) {
+  let p = 0;
+  const anos = +c.anos || 0;
+  p += anos >= 20 ? 3 : anos >= 10 ? 2 : anos >= 5 ? 1 : 0;
+  for (const k of ["cobertura", "eletrica", "hidraulica", "estrutura"]) p += Math.min(3, Math.max(0, +c[k] || 0));
+  const al = +c.alunos || 0;
+  p += al >= 500 ? 2 : al >= 200 ? 1 : 0;
+  const oc = +c.ocorrencias || 0;
+  p += oc >= 6 ? 2 : oc >= 3 ? 1 : 0;
+  return p;
+}
+function nivelDe(p) { let n = NIVEIS[0]; for (const x of NIVEIS) if (p >= x.min) n = x; return n; }
+
+/* ============================================================
+   Utilitários
+   ============================================================ */
+const $ = (s) => document.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const nz = (v) => (v === "" || v == null || isNaN(+v)) ? null : +v;
+const brl = (v) => nz(v) == null ? "—" : (+v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const pct = (v) => v == null || !isFinite(v) ? "—" : v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
+const pad2 = (n) => String(n).padStart(2, "0");
+const dias = (v) => v == null ? "—" : `${v.toLocaleString("pt-BR")} dia${v === 1 ? "" : "s"}`;
+
+/* Cálculos financeiros e de prazo de uma obra */
+function calc(o) {
+  const vo = nz(o.valorOriginal);
+  const ads = (o.aditivosServico || []).map((a) => ({ valor: nz(a.valor) || 0, obs: a.obs || "" }));
+  let acum = 0;
+  const linhas = ads.map((a, i) => { acum += a.valor; return { n: i + 1, valor: a.valor, obs: a.obs, pct: vo ? a.valor / vo * 100 : null, pctAcum: vo ? acum / vo * 100 : null }; });
+  const totAd = ads.reduce((s, a) => s + a.valor, 0);
+  const vAtual = vo != null ? vo + totAd : nz(o.valor);
+  const prazoOr = nz(o.prazoOriginal);
+  const adp = (o.aditivosPrazo || []).map((a, i) => ({ n: i + 1, dias: nz(a.dias) || 0, obs: a.obs || "" }));
+  const totDias = adp.reduce((s, a) => s + a.dias, 0);
+  const vm = nz(o.valorMedido);
+  return {
+    vo, linhas, totAd, pctTotal: vo ? totAd / vo * 100 : null, vAtual,
+    prazoOr, adp, totDias, prazoTotal: prazoOr != null ? prazoOr + totDias : null,
+    vm, saldo: vAtual != null && vm != null ? vAtual - vm : null,
+    pctMedido: vAtual && vm != null ? vm / vAtual * 100 : null
+  };
+}
+
+const configurado = !Object.values(firebaseConfig).some((v) => String(v).startsWith("COLE_"));
+if (!configurado) {
+  $("#lerr").textContent = "Falta colar a configuração do Firebase no início do arquivo.";
+  $("#loginForm button[type=submit]").disabled = true;
+}
+
+let app, auth, db;
+let papel = null;
+let obras = new Map();
+let unsub = null;
+const filtroSit = new Set(Object.keys(SITUACOES));
+let pickMode = null;
+
+/* ---- mapa ---- */
+const map = L.map("map", { zoomControl: true }).setView(MAPA_CENTRO, MAPA_ZOOM);
+const baseOsm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" });
+const baseSat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, attribution: "Imagens © Esri" });
+baseOsm.addTo(map);
+$("#base").addEventListener("change", (e) => {
+  map.removeLayer(e.target.value === "sat" ? baseOsm : baseSat);
+  (e.target.value === "sat" ? baseSat : baseOsm).addTo(map);
+});
+const camada = L.layerGroup().addTo(map);
+const markers = new Map();
+
+const legend = L.control({ position: "bottomright" });
+legend.onAdd = () => {
+  const d = L.DomUtil.create("div", "legend");
+  d.innerHTML = "<b>Situação (cor)</b><br>" +
+    Object.values(SITUACOES).map((s) => `<span class="sw" style="background:${s.cor}"></span>${s.nome}<br>`).join("") +
+    "<b>Atenção (contorno, sem processo)</b><br>" +
+    NIVEIS.map((n) => `<span class="ring" style="border:4px solid ${n.cor}"></span>${n.nome}<br>`).join("");
+  return d;
+};
+legend.addTo(map);
+
+map.on("click", (e) => { if (pickMode) { const f = pickMode; pickMode = null; $("#pickbanner").style.display = "none"; f(e.latlng); } });
+
+function icone(o) {
+  const sit = SITUACOES[o.situacao] || SITUACOES.sem_processo;
+  let ring = "#fff", pulse = "";
+  if (o.situacao === "sem_processo") { const n = nivelDe(pontuar(o.criterios)); ring = n.cor; if (n.id === "critico") pulse = " pulse"; }
+  return L.divIcon({ className: "", iconSize: [22, 22], iconAnchor: [11, 11], popupAnchor: [0, -11],
+    html: `<div class="pin${pulse}" style="background:${sit.cor};border-color:${ring}"></div>` });
+}
+
+/* ---- balão do mapa (resumo) ---- */
+function popupHtml(id, o) {
+  const sit = SITUACOES[o.situacao] || SITUACOES.sem_processo;
+  let attn = "";
+  if (o.situacao === "sem_processo") {
+    const p = pontuar(o.criterios), n = nivelDe(p);
+    attn = `<tr><td>Atenção</td><td><span class="lvl ${n.id}">${n.nome}</span> (${p} pts)</td></tr>`;
+  }
+  const pe = nz(o.percentual);
+  const exec = o.situacao === "execucao"
+    ? `<tr><td>Execução</td><td>${pe == null ? "% não informado" : esc(pe) + "%<div class='bar'><div style='width:" + Math.min(100, pe) + "%'></div></div>"}</td></tr>` : "";
+  const and = o.andamento ? `<span class="tag ${o.andamento === "paralisada" ? "warn" : ""}">${esc(ANDAMENTOS[o.andamento] || "")}</span>` : "";
+  return `<div class="popup"><h3>${esc(o.nome)}</h3>
+    <span class="tag"><i style="background:${sit.cor}"></i>${sit.nome}</span> ${and}
+    <table>
+      <tr><td>Tipo</td><td>${esc(o.tipo || "—")}</td></tr>
+      <tr><td>Localidade</td><td>${esc(o.localidade || "—")}</td></tr>
+      ${attn}${exec}
+      ${o.empresa ? `<tr><td>Empresa</td><td>${esc(o.empresa)}</td></tr>` : ""}
+    </table>
+    <div class="actions"><button class="btn small primary" data-ficha="${esc(id)}">Ver ficha completa</button>
+    ${papel === "editor" ? `<button class="btn small" data-edit="${esc(id)}">Editar</button>` : ""}</div>
+  </div>`;
+}
+
+/* ---- ficha completa ---- */
+async function abrirFicha(id) {
+  const o = obras.get(id); if (!o) return;
+  const c = calc(o);
+  const sit = SITUACOES[o.situacao] || SITUACOES.sem_processo;
+  let attn = "";
+  if (o.situacao === "sem_processo") { const p = pontuar(o.criterios), n = nivelDe(p); attn = `<span class="tag">Atenção: <span class="lvl ${n.id}">${n.nome}</span> (${p} pts)</span>`; }
+  const kv = (k, v, cls = "") => `<tr><td>${k}</td><td class="${cls}">${v}</td></tr>`;
+  const adList = c.linhas.length
+    ? `<div class="adlist">${c.linhas.map((a) => `<div><b>Aditivo ${pad2(a.n)}</b> — ${brl(a.valor)} — ${pct(a.pct)}${a.obs ? ` <small style="color:var(--muted)">(${esc(a.obs)})</small>` : ""}</div>`).join("")}</div>`
+    : "Nenhum";
+  const apList = c.adp.length
+    ? `<div class="adlist">${c.adp.map((a) => `<div><b>Aditivo ${pad2(a.n)}</b> — ${a.dias >= 0 ? "+" : ""}${dias(a.dias)}${a.obs ? ` <small style="color:var(--muted)">(${esc(a.obs)})</small>` : ""}</div>`).join("")}</div>`
+    : "Nenhum";
+  $("#sheet").className = "sheet wide";
+  $("#sheet").innerHTML = `
+    <div class="fh"><h2>${esc(o.nome)}</h2>
+      <span class="tag"><i style="background:${sit.cor}"></i>${sit.nome}</span>
+      ${o.andamento ? `<span class="tag ${o.andamento === "paralisada" ? "warn" : ""}">${esc(ANDAMENTOS[o.andamento])}</span>` : ""}
+      ${attn}
+    </div>
+    <div style="font-size:13px;color:var(--muted)">${esc(o.tipo || "")}${o.tipo && o.localidade ? " · " : ""}${esc(o.localidade || "")}</div>
+    <div class="fotobox" id="fotobox"></div>
+
+    <div class="fsec"><h4>Contrato e aditivos de serviço</h4><table>
+      ${kv("Nº do processo", esc(o.processo || "—"))}
+      ${kv("Contrato nº", esc(o.contrato || "—"))}
+      ${kv("Empresa", esc(o.empresa || "—"))}
+      ${kv("Valor total original", brl(c.vo), "num")}
+      ${kv(`Aditivos de serviço (${c.linhas.length})`, adList)}
+      ${kv("Valor total de aditivos", brl(c.vo != null || c.linhas.length ? c.totAd : null), "num")}
+      ${kv("% aditivada (total)", pct(c.pctTotal), "num")}
+      ${kv("Valor atual do contrato", `<b>${brl(c.vAtual)}</b>`, "num")}
+    </table></div>
+
+    <div class="fsec"><h4>Prazo</h4><table>
+      ${kv("Prazo original", dias(c.prazoOr), "num")}
+      ${kv(`Aditivos de prazo (${c.adp.length})`, apList)}
+      ${kv("Prazo com aditivos", `<b>${dias(c.prazoTotal)}</b>`, "num")}
+    </table></div>
+
+    <div class="fsec"><h4>Acompanhamento</h4><table>
+      ${kv("Engenheiro fiscal", esc(o.fiscal || "—"))}
+      ${kv("Andamento da obra", esc(ANDAMENTOS[o.andamento || ""]))}
+      ${kv("% físico executado", nz(o.percentual) == null ? "—" : pct(+o.percentual), "num")}
+      ${kv("Nº de notificações", nz(o.notificacoes) == null ? "—" : esc(o.notificacoes), "num")}
+      ${kv("Medição atual", nz(o.medicaoAtual) == null ? "—" : "Medição " + pad2(+o.medicaoAtual), "num")}
+      ${kv("Valor medido (acumulado)", `${brl(c.vm)}${c.pctMedido != null ? ` <small style="color:var(--muted)">(${pct(c.pctMedido)} do contrato)</small>` : ""}`, "num")}
+      ${kv("Valor da última medição", brl(o.valorUltimaMedicao), "num")}
+      ${kv("Saldo contratual", `<b>${brl(c.saldo)}</b>`, "num")}
+    </table></div>
+
+    <div class="fsec"><h4>Observações da obra</h4></div>
+    <div class="obsbox">${o.observacoes ? esc(o.observacoes) : "<span style='color:var(--muted)'>Sem observações.</span>"}</div>
+
+    <div class="foot">
+      ${papel === "editor" ? `<button class="btn primary" id="k_edit">Editar</button>` : ""}
+      <button class="btn" id="k_close">Fechar</button>
+    </div>`;
+  $("#modal").classList.add("open");
+  $("#k_close").onclick = () => $("#modal").classList.remove("open");
+  if ($("#k_edit")) $("#k_edit").onclick = () => abrirForm(id);
+  // foto (carregada sob demanda)
+  try {
+    const f = await getDoc(doc(db, "fotos", id));
+    if (f.exists() && f.data().dataUrl && $("#fotobox")) $("#fotobox").innerHTML = `<img alt="Fachada" src="${f.data().dataUrl}">`;
+  } catch (_) {}
+}
+
+/* ---- filtros / renderização ---- */
+function filtradas() {
+  const q = $("#q").value.trim().toLowerCase();
+  const min = +$("#nivelMin").value;
+  const out = [];
+  for (const [id, o] of obras) {
+    if (!filtroSit.has(o.situacao)) continue;
+    if (o.situacao === "sem_processo" && NIVEIS.indexOf(nivelDe(pontuar(o.criterios))) < min) continue;
+    if (q && !`${o.nome} ${o.localidade} ${o.empresa} ${o.contrato} ${o.processo} ${o.tipo} ${o.fiscal}`.toLowerCase().includes(q)) continue;
+    out.push([id, o]);
+  }
+  out.sort((a, b) => {
+    const pa = a[1].situacao === "sem_processo" ? pontuar(a[1].criterios) : -1;
+    const pb = b[1].situacao === "sem_processo" ? pontuar(b[1].criterios) : -1;
+    return pb - pa || String(a[1].nome).localeCompare(String(b[1].nome), "pt-BR");
+  });
+  return out;
+}
+
+function render() {
+  const cont = {}; for (const k in SITUACOES) cont[k] = 0;
+  for (const o of obras.values()) if (cont[o.situacao] != null) cont[o.situacao]++;
+  $("#counters").innerHTML = Object.entries(SITUACOES).map(([k, s]) =>
+    `<button class="chip ${filtroSit.has(k) ? "" : "off"}" data-sit="${k}"><span class="dot" style="background:${s.cor}"></span>${s.nome} <b>${cont[k]}</b></button>`).join("");
+  $("#sub").textContent = `${obras.size} unidade(s) cadastrada(s) · atualização em tempo real`;
+
+  const lista = filtradas();
+  camada.clearLayers(); markers.clear();
+  for (const [id, o] of lista) {
+    if (!isFinite(+o.lat) || !isFinite(+o.lng)) continue;
+    const m = L.marker([+o.lat, +o.lng], { icon: icone(o), title: o.nome }).bindPopup(() => popupHtml(id, o), { maxWidth: 320 });
+    m.addTo(camada); markers.set(id, m);
+  }
+  $("#list").innerHTML = lista.length ? lista.map(([id, o]) => {
+    const sit = SITUACOES[o.situacao] || SITUACOES.sem_processo;
+    let lv = "";
+    if (o.situacao === "sem_processo") { const p = pontuar(o.criterios), n = nivelDe(p); lv = `<span class="lvl ${n.id}">● ${n.nome} (${p})</span>`; }
+    return `<div class="item" data-id="${esc(id)}"><div class="t">${esc(o.nome)}</div>
+      <div class="m"><span class="tag"><i style="background:${sit.cor}"></i>${sit.nome}</span>${lv}<span>${esc(o.localidade || "")}</span></div></div>`;
+  }).join("") : `<div class="item" style="cursor:default;color:var(--muted)">Nenhuma unidade para os filtros atuais.</div>`;
+  $("#btnSeed").style.display = papel === "editor" && obras.size === 0 ? "" : "none";
+}
+
+document.addEventListener("click", (e) => {
+  const chip = e.target.closest("[data-sit]");
+  if (chip) { const k = chip.dataset.sit; filtroSit.has(k) ? filtroSit.delete(k) : filtroSit.add(k); render(); return; }
+  const item = e.target.closest(".item[data-id]");
+  if (item) { const m = markers.get(item.dataset.id); if (m) { map.setView(m.getLatLng(), Math.max(map.getZoom(), 14)); m.openPopup(); } return; }
+  const fi = e.target.closest("[data-ficha]");
+  if (fi) { abrirFicha(fi.dataset.ficha); return; }
+  const ed = e.target.closest("[data-edit]");
+  if (ed) { abrirForm(ed.dataset.edit); }
+});
+$("#q").addEventListener("input", render);
+$("#nivelMin").addEventListener("change", render);
+
+/* ---- foto: reduz a imagem no navegador (cabe no banco gratuito) ---- */
+async function reduzirImagem(file, max = 1000) {
+  const bmp = await createImageBitmap(file);
+  const s = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const cv = document.createElement("canvas");
+  cv.width = Math.max(1, Math.round(bmp.width * s)); cv.height = Math.max(1, Math.round(bmp.height * s));
+  cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
+  let q = 0.74, url = cv.toDataURL("image/jpeg", q);
+  while (url.length * 0.75 > 600000 && q > 0.35) { q -= 0.1; url = cv.toDataURL("image/jpeg", q); }
+  return url;
+}
+
+/* ---- formulário (somente editor) ---- */
+function sel(id, val, opts) {
+  return `<select id="${id}">${opts.map(([v, t]) => `<option value="${v}" ${String(v) === String(val) ? "selected" : ""}>${t}</option>`).join("")}</select>`;
+}
+async function abrirForm(id, rascunho) {
+  if (papel !== "editor") return;
+  const base = rascunho || (id ? obras.get(id) : null) || { situacao: "sem_processo", criterios: {} };
+  const o = JSON.parse(JSON.stringify(base));
+  const c = o.criterios || {};
+  const cond = CONDICOES.map((t, i) => [i, t]);
+  let adS = (o.aditivosServico || []).map((a) => ({ valor: a.valor ?? "", obs: a.obs || "" }));
+  let adP = (o.aditivosPrazo || []).map((a) => ({ dias: a.dias ?? "", obs: a.obs || "" }));
+  let fotoNova;                       // undefined = sem mudança | null = remover | string = nova
+  if (rascunho && "_foto" in rascunho) fotoNova = rascunho._foto;
+  let fotoAtual = null;               // foto já salva (para pré-visualizar)
+
+  $("#sheet").className = "sheet";
+  $("#sheet").innerHTML = `
+    <h2>${id ? "Editar" : "Nova"} obra / unidade</h2>
+    <div class="grid">
+      <div class="full"><label>Nome *</label><input id="f_nome" value="${esc(o.nome || "")}"></div>
+      <div><label>Tipo</label><input id="f_tipo" value="${esc(o.tipo || "")}" placeholder="Escola, CEI, quadra…"></div>
+      <div><label>Localidade / distrito</label><input id="f_loc" value="${esc(o.localidade || "")}"></div>
+      <div><label>Latitude *</label><input id="f_lat" value="${esc(o.lat ?? "")}" placeholder="-5.1678"></div>
+      <div><label>Longitude *</label><input id="f_lng" value="${esc(o.lng ?? "")}" placeholder="-40.6777"></div>
+      <div class="full"><button class="btn" type="button" id="f_pick">📍 Escolher no mapa</button></div>
+      <div><label>Situação (cor no mapa)</label>${sel("f_sit", o.situacao, Object.entries(SITUACOES).map(([k, s]) => [k, s.nome]))}</div>
+      <div><label>Situação da obra (andamento)</label>${sel("f_and", o.andamento || "", Object.entries(ANDAMENTOS))}</div>
+      <div><label>% físico executado</label><input id="f_pct" type="number" min="0" max="100" step="0.01" value="${esc(o.percentual ?? "")}"></div>
+      <div><label>Empresa</label><input id="f_emp" value="${esc(o.empresa || "")}"></div>
+    </div>
+
+    <fieldset><legend>Contrato e aditivos de serviço</legend>
+      <div class="grid">
+        <div><label>Nº do processo</label><input id="f_proc" value="${esc(o.processo || "")}"></div>
+        <div><label>Contrato nº</label><input id="f_con" value="${esc(o.contrato || "")}"></div>
+        <div class="full"><label>Valor total original (R$)</label><input id="f_vo" type="number" step="0.01" value="${esc(o.valorOriginal ?? "")}"></div>
+      </div>
+      <div style="margin-top:10px"><label>Aditivos de serviço (valor acrescido; use valor negativo para supressão)</label><div id="rows_s"></div>
+        <button class="btn small" type="button" id="add_s">+ Adicionar aditivo de serviço</button></div>
+      <div class="preview" id="prev_v"></div>
+    </fieldset>
+
+    <fieldset><legend>Prazo</legend>
+      <div class="grid"><div class="full"><label>Prazo original (dias)</label><input id="f_po" type="number" min="0" value="${esc(o.prazoOriginal ?? "")}"></div></div>
+      <div style="margin-top:10px"><label>Aditivos de prazo (dias acrescidos)</label><div id="rows_p"></div>
+        <button class="btn small" type="button" id="add_p">+ Adicionar aditivo de prazo</button></div>
+      <div class="preview" id="prev_p"></div>
+    </fieldset>
+
+    <fieldset><legend>Acompanhamento</legend>
+      <div class="grid">
+        <div><label>Engenheiro fiscal</label><input id="f_fis" value="${esc(o.fiscal || "")}"></div>
+        <div><label>Nº de notificações</label><input id="f_not" type="number" min="0" value="${esc(o.notificacoes ?? "")}"></div>
+        <div><label>Medição atual (nº)</label><input id="f_med" type="number" min="0" value="${esc(o.medicaoAtual ?? "")}"></div>
+        <div><label>Valor da última medição (R$)</label><input id="f_vum" type="number" step="0.01" value="${esc(o.valorUltimaMedicao ?? "")}"></div>
+        <div class="full"><label>Valor medido acumulado (R$)</label><input id="f_vm" type="number" step="0.01" value="${esc(o.valorMedido ?? "")}"></div>
+      </div>
+      <div class="preview" id="prev_m"></div>
+    </fieldset>
+
+    <fieldset><legend>Foto da fachada</legend>
+      <input id="f_foto" type="file" accept="image/*">
+      <div class="fotoprev" id="fotoprev"></div>
+      <button class="btn small danger" type="button" id="f_fotorm" style="margin-top:8px;display:none">Remover foto</button>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px">A imagem é reduzida automaticamente (até 1000 px) para caber no banco gratuito.</div>
+    </fieldset>
+
+    <fieldset><legend>Observações da obra</legend>
+      <textarea id="f_obs" rows="7" placeholder="Escreva aqui as observações da obra…">${esc(o.observacoes || "")}</textarea>
+    </fieldset>
+
+    <fieldset><legend>Critérios de atenção (usados para unidades sem processo)</legend>
+      <div class="grid">
+        <div><label>Anos desde a última reforma</label><input id="c_anos" type="number" min="0" value="${esc(c.anos ?? "")}"></div>
+        <div><label>Nº de alunos</label><input id="c_alu" type="number" min="0" value="${esc(c.alunos ?? "")}"></div>
+        <div><label>Cobertura</label>${sel("c_cob", c.cobertura ?? 0, cond)}</div>
+        <div><label>Instalação elétrica</label>${sel("c_ele", c.eletrica ?? 0, cond)}</div>
+        <div><label>Hidráulica / sanitário</label>${sel("c_hid", c.hidraulica ?? 0, cond)}</div>
+        <div><label>Estrutura / paredes / piso</label>${sel("c_est", c.estrutura ?? 0, cond)}</div>
+        <div class="full"><label>Ocorrências de manutenção nos últimos 12 meses</label><input id="c_oco" type="number" min="0" value="${esc(c.ocorrencias ?? "")}"></div>
+      </div>
+      <div class="preview" id="prev"></div>
+    </fieldset>
+    <div class="err" id="f_err"></div>
+    <div class="foot">
+      ${id ? `<button class="btn danger" id="f_del" style="margin-right:auto">Excluir</button>` : ""}
+      <button class="btn" id="f_cancel">Cancelar</button>
+      <button class="btn primary" id="f_save">Salvar</button>
+    </div>`;
+  $("#modal").classList.add("open");
+
+  const lerCrit = () => ({ anos: +$("#c_anos").value || 0, alunos: +$("#c_alu").value || 0, cobertura: +$("#c_cob").value, eletrica: +$("#c_ele").value,
+    hidraulica: +$("#c_hid").value, estrutura: +$("#c_est").value, ocorrencias: +$("#c_oco").value || 0 });
+  const numOuVazio = (el) => { const v = $(el).value.replace(",", "."); return v === "" ? "" : +v; };
+  const lerForm = () => ({
+    nome: $("#f_nome").value.trim(), tipo: $("#f_tipo").value.trim(), localidade: $("#f_loc").value.trim(),
+    lat: $("#f_lat").value.replace(",", "."), lng: $("#f_lng").value.replace(",", "."),
+    situacao: $("#f_sit").value, andamento: $("#f_and").value, percentual: numOuVazio("#f_pct"),
+    empresa: $("#f_emp").value.trim(), processo: $("#f_proc").value.trim(), contrato: $("#f_con").value.trim(),
+    valorOriginal: numOuVazio("#f_vo"), aditivosServico: adS.map((a) => ({ valor: a.valor === "" ? 0 : +a.valor, obs: a.obs })),
+    prazoOriginal: numOuVazio("#f_po"), aditivosPrazo: adP.map((a) => ({ dias: a.dias === "" ? 0 : +a.dias, obs: a.obs })),
+    fiscal: $("#f_fis").value.trim(), notificacoes: numOuVazio("#f_not"), medicaoAtual: numOuVazio("#f_med"),
+    valorUltimaMedicao: numOuVazio("#f_vum"), valorMedido: numOuVazio("#f_vm"),
+    observacoes: $("#f_obs").value, criterios: lerCrit()
+  });
+
+  const prev = () => {
+    const p = pontuar(lerCrit()), n = nivelDe(p);
+    $("#prev").innerHTML = `Pontuação: <b>${p}</b> de 19 → nível <span class="lvl ${n.id}">${n.nome}</span>`;
+    const d = lerForm(), k = calc(d);
+    $("#prev_v").innerHTML = `Aditivos: <b>${k.linhas.length}</b> · Total aditivado: <b>${brl(k.totAd)}</b> (${pct(k.pctTotal)}) · Valor atual: <b>${brl(k.vAtual)}</b>`;
+    $("#prev_p").innerHTML = `Aditivos de prazo: <b>${k.adp.length}</b> (+${k.totDias} dias) · Prazo com aditivos: <b>${dias(k.prazoTotal)}</b>`;
+    $("#prev_m").innerHTML = `Saldo contratual: <b>${brl(k.saldo)}</b>${k.pctMedido != null ? ` · Medido: ${pct(k.pctMedido)} do contrato` : ""}`;
+    k.linhas.forEach((a, i) => { const el = document.getElementById("pc_s" + i); if (el) el.textContent = pct(a.pct); });
+  };
+  const rowsS = () => {
+    $("#rows_s").innerHTML = adS.map((a, i) => `<div class="arow">
+      <span class="n">Aditivo ${pad2(i + 1)}</span>
+      <input data-s="${i}" data-k="valor" type="number" step="0.01" placeholder="Valor (R$)" value="${esc(a.valor)}">
+      <input data-s="${i}" data-k="obs" placeholder="Descrição (opcional)" value="${esc(a.obs)}">
+      <span class="pc" id="pc_s${i}"></span>
+      <button class="btn small danger" type="button" data-rs="${i}">✕</button></div>`).join("");
+    prev();
+  };
+  const rowsP = () => {
+    $("#rows_p").innerHTML = adP.map((a, i) => `<div class="arow p">
+      <span class="n">Aditivo ${pad2(i + 1)}</span>
+      <input data-p="${i}" data-k="dias" type="number" placeholder="Dias" value="${esc(a.dias)}">
+      <input data-p="${i}" data-k="obs" placeholder="Descrição (opcional)" value="${esc(a.obs)}">
+      <button class="btn small danger" type="button" data-rp="${i}">✕</button></div>`).join("");
+    prev();
+  };
+  rowsS(); rowsP();
+  $("#add_s").onclick = () => { adS.push({ valor: "", obs: "" }); rowsS(); };
+  $("#add_p").onclick = () => { adP.push({ dias: "", obs: "" }); rowsP(); };
+  $("#sheet").addEventListener("input", (e) => {
+    const t = e.target;
+    if (t.dataset.s != null) adS[+t.dataset.s][t.dataset.k] = t.value;
+    else if (t.dataset.p != null) adP[+t.dataset.p][t.dataset.k] = t.value;
+    prev();
+  });
+  $("#sheet").addEventListener("click", (e) => {
+    const rs = e.target.closest("[data-rs]"), rp = e.target.closest("[data-rp]");
+    if (rs) { adS.splice(+rs.dataset.rs, 1); rowsS(); }
+    if (rp) { adP.splice(+rp.dataset.rp, 1); rowsP(); }
+  });
+
+  // foto
+  const mostrarFoto = () => {
+    const src = fotoNova === undefined ? fotoAtual : fotoNova;
+    $("#fotoprev").innerHTML = src ? `<img alt="Fachada" src="${src}">` : "";
+    $("#f_fotorm").style.display = src ? "" : "none";
+  };
+  $("#f_foto").onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    try { fotoNova = await reduzirImagem(f); mostrarFoto(); } catch (err) { $("#f_err").textContent = "Não foi possível ler a imagem."; }
+  };
+  $("#f_fotorm").onclick = () => { fotoNova = null; $("#f_foto").value = ""; mostrarFoto(); };
+  if (id) { try { const fs = await getDoc(doc(db, "fotos", id)); if (fs.exists()) fotoAtual = fs.data().dataUrl || null; } catch (_) {} }
+  mostrarFoto();
+
+  $("#sheet").querySelectorAll("fieldset input:not([type=file]),fieldset select,fieldset textarea").forEach((el) => el.addEventListener("input", prev));
+  prev();
+
+  $("#f_cancel").onclick = () => $("#modal").classList.remove("open");
+  $("#f_pick").onclick = () => {
+    const rasc = lerForm(); if (fotoNova !== undefined) rasc._foto = fotoNova;
+    $("#modal").classList.remove("open");
+    $("#pickbanner").style.display = "block";
+    pickMode = (ll) => { rasc.lat = ll.lat.toFixed(6); rasc.lng = ll.lng.toFixed(6); abrirForm(id, rasc); };
+  };
+  if (id) $("#f_del").onclick = async () => {
+    if (!confirm(`Excluir "${o.nome}" definitivamente?`)) return;
+    try { await deleteDoc(doc(db, "obras", id)); try { await deleteDoc(doc(db, "fotos", id)); } catch (_) {} await log(id, o.nome, "excluiu", ""); $("#modal").classList.remove("open"); }
+    catch (e) { $("#f_err").textContent = "Não foi possível excluir: " + e.code; }
+  };
+  $("#f_save").onclick = async () => {
+    const d = lerForm();
+    if (!d.nome) return $("#f_err").textContent = "Informe o nome.";
+    const lat = parseFloat(d.lat), lng = parseFloat(d.lng);
+    if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return $("#f_err").textContent = "Latitude/longitude inválidas (ex.: -5.1678 e -40.6777).";
+    const k = calc(d);
+    const dados = { ...d, lat, lng, valor: k.vAtual ?? "", atualizadoEm: serverTimestamp(), atualizadoPor: auth.currentUser.email };
+    $("#f_save").disabled = true;
+    try {
+      let rid = id, resumo = "";
+      if (id) {
+        const antes = obras.get(id);
+        if (antes && antes.situacao !== d.situacao) resumo = `situação: ${SITUACOES[antes.situacao]?.nome} → ${SITUACOES[d.situacao].nome}`;
+        await setDoc(doc(db, "obras", id), dados);
+        await log(id, d.nome, "alterou", resumo);
+      } else {
+        const ref = await addDoc(collection(db, "obras"), dados); rid = ref.id;
+        await log(rid, d.nome, "criou", SITUACOES[d.situacao].nome);
+      }
+      if (fotoNova === null) { try { await deleteDoc(doc(db, "fotos", rid)); } catch (_) {} }
+      else if (typeof fotoNova === "string") await setDoc(doc(db, "fotos", rid), { dataUrl: fotoNova, atualizadoEm: serverTimestamp(), por: auth.currentUser.email });
+      $("#modal").classList.remove("open");
+    } catch (e) { $("#f_err").textContent = "Erro ao salvar: " + (e.code || e.message); $("#f_save").disabled = false; }
+  };
+}
+$("#modal").addEventListener("mousedown", (e) => { if (e.target.id === "modal") $("#modal").classList.remove("open"); });
+$("#btnNova").onclick = () => abrirForm(null, { situacao: "sem_processo", criterios: {}, lat: map.getCenter().lat.toFixed(6), lng: map.getCenter().lng.toFixed(6) });
+
+async function log(obraId, nome, acao, resumo) {
+  try { await addDoc(collection(db, "historico"), { obraId, nome, acao, resumo, usuario: auth.currentUser.email, em: serverTimestamp() }); } catch (_) {}
+}
+$("#btnHist").onclick = async () => {
+  $("#sheet").className = "sheet";
+  $("#sheet").innerHTML = `<h2>Histórico de alterações</h2><div class="hist" id="hist">Carregando…</div><div class="foot"><button class="btn" id="h_close">Fechar</button></div>`;
+  $("#modal").classList.add("open"); $("#h_close").onclick = () => $("#modal").classList.remove("open");
+  try {
+    const snap = await getDocs(query(collection(db, "historico"), orderBy("em", "desc"), limit(60)));
+    $("#hist").innerHTML = snap.empty ? "Sem registros." : snap.docs.map((d) => {
+      const x = d.data(); const t = x.em?.toDate ? x.em.toDate().toLocaleString("pt-BR") : "";
+      return `<div><b>${esc(x.nome)}</b> — ${esc(x.acao)} ${x.resumo ? "(" + esc(x.resumo) + ")" : ""}<br><small>${esc(x.usuario)} · ${t}</small></div>`;
+    }).join("");
+  } catch (e) { $("#hist").textContent = "Não foi possível carregar: " + (e.code || e.message); }
+};
+
+/* ---- dados de exemplo (fictícios) ---- */
+$("#btnSeed").onclick = async () => {
+  if (!confirm("Carregar 12 unidades FICTÍCIAS de exemplo? Depois você pode excluí-las ou editá-las.")) return;
+  const [la, lo] = MAPA_CENTRO, b = writeBatch(db);
+  const ex = [
+    ["Escola Exemplo 01", "Escola", "Sede", 0.00, 0.00, "execucao", { percentual: 62, empresa: "Construtora Exemplo", contrato: "010/2026", valorOriginal: 850000, prazoOriginal: 360 }],
+    ["CEI Exemplo 02", "CEI", "Distrito A", 0.12, -0.10, "execucao", { percentual: 25, empresa: "Empresa Modelo", contrato: "014/2026", valorOriginal: 1200000, prazoOriginal: 300 }],
+    ["Escola Exemplo 03", "Escola", "Distrito B", -0.20, 0.15, "projeto", { observacoes: "Projeto arquitetônico em elaboração" }],
+    ["Quadra Exemplo 04", "Quadra", "Distrito C", 0.25, 0.20, "projeto", {}],
+    ["Escola Exemplo 05", "Escola", "Distrito D", -0.10, -0.25, "licitacao", { contrato: "Concorrência 003/2026", valorOriginal: 640000 }],
+    ["Escola Exemplo 06", "Escola", "Zona rural 1", 0.30, -0.22, "sem_processo", { criterios: { anos: 22, alunos: 120, cobertura: 3, eletrica: 2, hidraulica: 2, estrutura: 3, ocorrencias: 7 } }],
+    ["Escola Exemplo 07", "Escola", "Zona rural 2", -0.30, 0.05, "sem_processo", { criterios: { anos: 12, alunos: 260, cobertura: 2, eletrica: 1, hidraulica: 2, estrutura: 1, ocorrencias: 4 } }],
+    ["CEI Exemplo 08", "CEI", "Bairro 1", 0.05, 0.08, "sem_processo", { criterios: { anos: 6, alunos: 90, cobertura: 1, eletrica: 1, hidraulica: 0, estrutura: 0, ocorrencias: 1 } }],
+    ["Escola Exemplo 09", "Escola", "Bairro 2", -0.05, -0.08, "sem_processo", { criterios: { anos: 2, alunos: 520, cobertura: 0, eletrica: 0, hidraulica: 1, estrutura: 0, ocorrencias: 0 } }],
+    ["Escola Exemplo 10", "Escola", "Zona rural 3", 0.18, 0.32, "sem_processo", { criterios: { anos: 25, alunos: 70, cobertura: 3, eletrica: 3, hidraulica: 3, estrutura: 2, ocorrencias: 9 } }],
+    ["Escola Exemplo 11", "Escola", "Zona rural 4", -0.22, -0.18, "sem_processo", { criterios: { anos: 15, alunos: 210, cobertura: 2, eletrica: 2, hidraulica: 1, estrutura: 2, ocorrencias: 3 } }],
+    ["Escola Exemplo 12", "Escola", "Zona rural 5", -0.34, 0.28, "sem_processo", { criterios: { anos: 9, alunos: 150, cobertura: 1, eletrica: 0, hidraulica: 1, estrutura: 1, ocorrencias: 2 } }]
+  ];
+  for (const [nome, tipo, loc, dla, dlo, sit, extra] of ex) {
+    const dd = { nome, tipo, localidade: loc, lat: +(la + dla).toFixed(5), lng: +(lo + dlo).toFixed(5), situacao: sit,
+      percentual: "", empresa: "", contrato: "", processo: "", observacoes: "[EXEMPLO] ", criterios: {}, ...extra,
+      atualizadoEm: serverTimestamp(), atualizadoPor: auth.currentUser.email };
+    dd.valor = calc(dd).vAtual ?? "";
+    b.set(doc(collection(db, "obras")), dd);
+  }
+  try { await b.commit(); } catch (e) { alert("Erro: " + (e.code || e.message)); }
+};
+
+/* ---- exportar CSV (respeita os filtros atuais) ---- */
+$("#btnCsv").onclick = () => {
+  const cab = ["Nome", "Tipo", "Localidade", "Situação", "Andamento", "Nível de atenção", "Pontos", "Nº processo", "Contrato", "Empresa",
+    "Valor original", "Nº aditivos serviço", "Valor aditivos", "% aditivada", "Valor atual", "Prazo original (dias)", "Nº aditivos prazo", "Prazo com aditivos (dias)",
+    "Engenheiro fiscal", "Nº notificações", "Medição atual", "Valor medido", "Valor última medição", "Saldo contratual", "% físico", "Latitude", "Longitude", "Observações"];
+  const lin = filtradas().map(([, o]) => {
+    const sp = o.situacao === "sem_processo", p = sp ? pontuar(o.criterios) : "", k = calc(o);
+    const f2 = (v) => v == null ? "" : String(Math.round(v * 100) / 100).replace(".", ",");
+    return [o.nome, o.tipo, o.localidade, SITUACOES[o.situacao]?.nome, ANDAMENTOS[o.andamento || ""], sp ? nivelDe(p).nome : "", p, o.processo, o.contrato, o.empresa,
+      f2(k.vo), k.linhas.length, f2(k.vo != null || k.linhas.length ? k.totAd : null), f2(k.pctTotal), f2(k.vAtual), k.prazoOr ?? "", k.adp.length, k.prazoTotal ?? "",
+      o.fiscal, o.notificacoes, o.medicaoAtual, f2(k.vm), f2(nz(o.valorUltimaMedicao)), f2(k.saldo), o.percentual, o.lat, o.lng, o.observacoes];
+  });
+  const csv = [cab, ...lin].map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(";")).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
+  a.download = `obras_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+};
+
+/* ---- autenticação e dados em tempo real ---- */
+if (configurado) {
+  app = initializeApp(firebaseConfig); auth = getAuth(app); db = getFirestore(app);
+
+  $("#loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault(); $("#lerr").textContent = "";
+    try { await signInWithEmailAndPassword(auth, $("#lemail").value.trim(), $("#lsenha").value); }
+    catch (err) { $("#lerr").textContent = ["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found"].includes(err.code) ? "E-mail ou senha incorretos." : "Erro ao entrar: " + err.code; }
+  });
+  $("#lreset").onclick = async () => {
+    const em = $("#lemail").value.trim(); if (!em) return $("#lerr").textContent = "Digite seu e-mail e clique de novo.";
+    try { await sendPasswordResetEmail(auth, em); $("#lerr").textContent = "Enviamos um link de redefinição para o e-mail."; } catch (err) { $("#lerr").textContent = "Erro: " + err.code; }
+  };
+  $("#logout").onclick = () => signOut(auth);
+
+  onAuthStateChanged(auth, async (user) => {
+    if (unsub) { unsub(); unsub = null; }
+    obras.clear(); papel = null;
+    if (!user) { $("#login").style.display = "flex"; $("#who").textContent = ""; $("#editorTools").style.display = "none"; render(); return; }
+    try {
+      const u = await getDoc(doc(db, "usuarios", user.uid));
+      if (!u.exists()) { await signOut(auth); $("#lerr").textContent = "Seu usuário ainda não foi liberado. Fale com o administrador."; return; }
+      papel = u.data().papel === "editor" ? "editor" : "leitor";
+    } catch (err) { await signOut(auth); $("#lerr").textContent = "Não foi possível verificar o acesso: " + err.code; return; }
+    $("#login").style.display = "none";
+    $("#who").textContent = `${user.email} · ${papel === "editor" ? "Editor" : "Somente leitura"}`;
+    $("#editorTools").style.display = papel === "editor" ? "flex" : "none";
+    unsub = onSnapshot(collection(db, "obras"), (snap) => {
+      obras = new Map(snap.docs.map((d) => [d.id, d.data()])); render();
+    }, (err) => { $("#sub").textContent = "Erro ao ler dados: " + err.code; });
+    render();
+  });
+}
+render();
+</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</body>
+</html>
