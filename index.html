@@ -66,6 +66,7 @@ aside{background:var(--card);border-right:1px solid var(--line);display:flex;fle
 label{font-size:12px;color:var(--muted);display:block;margin-bottom:3px}
 .sheet input,.sheet select,.sheet textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font:inherit}
 .sheet textarea{resize:vertical}
+.sheet input.money{text-align:right;font-variant-numeric:tabular-nums}
 .sheet fieldset{border:1px solid var(--line);border-radius:10px;margin:12px 0 0;padding:10px}
 .sheet legend{font-size:12px;color:var(--muted);padding:0 6px;font-weight:600}
 .preview{margin-top:10px;padding:10px;border-radius:8px;background:#f7fafc;font-size:13px}
@@ -249,6 +250,23 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const nz = (v) => (v === "" || v == null || isNaN(+v)) ? null : +v;
 const brl = (v) => nz(v) == null ? "—" : (+v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const pct = (v) => v == null || !isFinite(v) ? "—" : v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
+const fmtBR = (v) => nz(v) == null ? "" : (+v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const parseBR = (v) => { const t = String(v ?? "").trim(); if (!t) return ""; const n = +t.replace(/\./g, "").replace(",", "."); return isFinite(n) ? n : ""; };
+const dtHora = (ts) => { const d = ts && ts.toDate ? ts.toDate() : null; return d ? d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"; };
+function maskMoney(el) {
+  const old = el.value, pos = el.selectionStart ?? old.length, neg = old.trim().startsWith("-");
+  const raw = old.replace(/[^\d,]/g, ""), ci = raw.indexOf(",");
+  let ip = ci < 0 ? raw : raw.slice(0, ci);
+  const dp = ci < 0 ? null : raw.slice(ci + 1).replace(/,/g, "").slice(0, 2);
+  ip = ip.replace(/^0+(?=\d)/, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  const nv = (neg ? "-" : "") + ip + (dp !== null ? "," + dp : "");
+  if (nv !== old) {
+    const sig = old.slice(0, pos).replace(/[^\d,]/g, "").length;
+    el.value = nv; let c = 0, i = 0;
+    for (; i < nv.length && c < sig; i++) if (/[\d,]/.test(nv[i])) c++;
+    try { el.setSelectionRange(i, i); } catch (_) {}
+  }
+}
 const dtBR = (v) => v ? String(v).split("-").reverse().join("/") : "—";
 const pad2 = (n) => String(n).padStart(2, "0");
 const dias = (v) => v == null ? "—" : `${v.toLocaleString("pt-BR")} dia${v === 1 ? "" : "s"}`;
@@ -345,6 +363,7 @@ function popupHtml(id, o) {
       ${attn}${exec}
       ${o.situacao === "entregue" ? `<tr><td>Entregue em</td><td>${esc(dtBR(o.entregueEm))}</td></tr>` : ""}
       ${o.empresa ? `<tr><td>Empresa</td><td>${esc(o.empresa)}</td></tr>` : ""}
+      <tr><td>Atualizado em</td><td>${esc(dtHora(o.atualizadoEm))}</td></tr>
     </table>
     <div class="actions"><button class="btn small primary" data-ficha="${esc(id)}">Ver ficha completa</button>
     ${papel === "editor" ? `<button class="btn small" data-edit="${esc(id)}">Editar</button>` : ""}</div>
@@ -373,7 +392,9 @@ async function abrirFicha(id) {
       ${attn}
     </div>
     <div style="font-size:13px;color:var(--muted)">${esc(o.tipo || "")}${o.tipo && o.localidade ? " · " : ""}${esc(o.localidade || "")}</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:2px" id="k_mod">Última modificação: <b>${esc(dtHora(o.atualizadoEm))}</b>${o.atualizadoPor ? " · por " + esc(o.atualizadoPor) : ""}</div>
     <div class="fotobox" id="fotobox"></div>
+    ${papel === "editor" ? `<div style="margin-top:8px"><label class="btn small" style="display:inline-block;cursor:pointer;margin:0">📷 <span id="k_fototxt">Adicionar foto</span><input id="k_foto" type="file" accept="image/*" hidden></label> <span id="k_fotomsg" style="font-size:12px;color:var(--muted)"></span></div>` : ""}
 
     <div class="fsec"><h4>Contrato e aditivos de serviço</h4><table>
       ${kv("Nº do processo", esc(o.processo || "—"))}
@@ -417,8 +438,24 @@ async function abrirFicha(id) {
   // foto (carregada sob demanda)
   try {
     const f = await getDoc(doc(db, "fotos", id));
-    if (f.exists() && f.data().dataUrl && $("#fotobox")) $("#fotobox").innerHTML = `<img alt="Fachada" src="${f.data().dataUrl}">`;
+    if (f.exists() && f.data().dataUrl && $("#fotobox")) {
+      $("#fotobox").innerHTML = `<img alt="Foto da obra" src="${f.data().dataUrl}">`;
+      if ($("#k_fototxt")) $("#k_fototxt").textContent = "Trocar foto";
+    }
   } catch (_) {}
+  if ($("#k_foto")) $("#k_foto").onchange = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    $("#k_fotomsg").textContent = "Enviando…";
+    try {
+      const url = await reduzirImagem(file);
+      await setDoc(doc(db, "fotos", id), { dataUrl: url, atualizadoEm: serverTimestamp(), por: auth.currentUser.email });
+      await setDoc(doc(db, "obras", id), { atualizadoEm: serverTimestamp(), atualizadoPor: auth.currentUser.email }, { merge: true });
+      await log(id, o.nome, "editou", "foto da obra");
+      $("#fotobox").innerHTML = `<img alt="Foto da obra" src="${url}">`;
+      $("#k_fototxt").textContent = "Trocar foto"; $("#k_fotomsg").textContent = "Foto salva.";
+      $("#k_mod").innerHTML = `Última modificação: <b>${esc(new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }))}</b> · por ${esc(auth.currentUser.email)}`;
+    } catch (err) { $("#k_fotomsg").textContent = "Não foi possível salvar a foto."; }
+  };
 }
 
 /* ---- filtros / renderização ---- */
@@ -499,7 +536,7 @@ async function abrirForm(id, rascunho) {
   const o = JSON.parse(JSON.stringify(base));
   const c = o.criterios || {};
   const cond = CONDICOES.map((t, i) => [i, t]);
-  let adS = (o.aditivosServico || []).map((a) => ({ valor: a.valor ?? "", obs: a.obs || "" }));
+  let adS = (o.aditivosServico || []).map((a) => ({ valor: fmtBR(a.valor), obs: a.obs || "" }));
   let adP = (o.aditivosPrazo || []).map((a) => ({ dias: a.dias ?? "", obs: a.obs || "" }));
   let fotoNova;                       // undefined = sem mudança | null = remover | string = nova
   if (rascunho && "_foto" in rascunho) fotoNova = rascunho._foto;
@@ -526,7 +563,7 @@ async function abrirForm(id, rascunho) {
       <div class="grid">
         <div><label>Nº do processo</label><input id="f_proc" value="${esc(o.processo || "")}"></div>
         <div><label>Contrato nº</label><input id="f_con" value="${esc(o.contrato || "")}"></div>
-        <div class="full"><label>Valor total original (R$)</label><input id="f_vo" type="number" step="0.01" value="${esc(o.valorOriginal ?? "")}"></div>
+        <div class="full"><label>Valor total original (R$)</label><input id="f_vo" class="money" inputmode="decimal" placeholder="0,00" value="${esc(fmtBR(o.valorOriginal))}"></div>
       </div>
       <div style="margin-top:10px"><label>Aditivos de serviço (valor acrescido; use valor negativo para supressão)</label><div id="rows_s"></div>
         <button class="btn small" type="button" id="add_s">+ Adicionar aditivo de serviço</button></div>
@@ -545,8 +582,8 @@ async function abrirForm(id, rascunho) {
         <div><label>Engenheiro fiscal</label><input id="f_fis" value="${esc(o.fiscal || "")}"></div>
         <div><label>Nº de notificações</label><input id="f_not" type="number" min="0" value="${esc(o.notificacoes ?? "")}"></div>
         <div><label>Medição atual (nº)</label><input id="f_med" type="number" min="0" value="${esc(o.medicaoAtual ?? "")}"></div>
-        <div><label>Valor da última medição (R$)</label><input id="f_vum" type="number" step="0.01" value="${esc(o.valorUltimaMedicao ?? "")}"></div>
-        <div class="full"><label>Valor medido acumulado (R$)</label><input id="f_vm" type="number" step="0.01" value="${esc(o.valorMedido ?? "")}"></div>
+        <div><label>Valor da última medição (R$)</label><input id="f_vum" class="money" inputmode="decimal" placeholder="0,00" value="${esc(fmtBR(o.valorUltimaMedicao))}"></div>
+        <div class="full"><label>Valor medido acumulado (R$)</label><input id="f_vm" class="money" inputmode="decimal" placeholder="0,00" value="${esc(fmtBR(o.valorMedido))}"></div>
       </div>
       <div class="preview" id="prev_m"></div>
     </fieldset>
@@ -581,6 +618,11 @@ async function abrirForm(id, rascunho) {
       <button class="btn primary" id="f_save">Salvar</button>
     </div>`;
   $("#modal").classList.add("open");
+  $("#sheet").addEventListener("input", (e) => { if (e.target.classList && e.target.classList.contains("money")) maskMoney(e.target); }, true);
+  $("#sheet").addEventListener("change", (e) => {
+    const t = e.target;
+    if (t.classList && t.classList.contains("money") && t.value.trim() !== "") { t.value = fmtBR(parseBR(t.value)); t.dispatchEvent(new Event("input", { bubbles: true })); }
+  });
 
   const lerCrit = () => ({ anos: +$("#c_anos").value || 0, alunos: +$("#c_alu").value || 0, cobertura: +$("#c_cob").value, eletrica: +$("#c_ele").value,
     hidraulica: +$("#c_hid").value, estrutura: +$("#c_est").value, ocorrencias: +$("#c_oco").value || 0 });
@@ -590,10 +632,10 @@ async function abrirForm(id, rascunho) {
     lat: $("#f_lat").value.replace(",", "."), lng: $("#f_lng").value.replace(",", "."),
     situacao: $("#f_sit").value, entregueEm: $("#f_sit").value === "entregue" ? $("#f_ent").value : "", andamento: $("#f_and").value, percentual: numOuVazio("#f_pct"),
     empresa: $("#f_emp").value.trim(), processo: $("#f_proc").value.trim(), contrato: $("#f_con").value.trim(),
-    valorOriginal: numOuVazio("#f_vo"), aditivosServico: adS.map((a) => ({ valor: a.valor === "" ? 0 : +a.valor, obs: a.obs })),
+    valorOriginal: parseBR($("#f_vo").value), aditivosServico: adS.map((a) => ({ valor: parseBR(a.valor) || 0, obs: a.obs })),
     prazoOriginal: numOuVazio("#f_po"), aditivosPrazo: adP.map((a) => ({ dias: a.dias === "" ? 0 : +a.dias, obs: a.obs })),
     fiscal: $("#f_fis").value.trim(), notificacoes: numOuVazio("#f_not"), medicaoAtual: numOuVazio("#f_med"),
-    valorUltimaMedicao: numOuVazio("#f_vum"), valorMedido: numOuVazio("#f_vm"),
+    valorUltimaMedicao: parseBR($("#f_vum").value), valorMedido: parseBR($("#f_vm").value),
     observacoes: $("#f_obs").value, criterios: lerCrit()
   });
 
@@ -609,7 +651,7 @@ async function abrirForm(id, rascunho) {
   const rowsS = () => {
     $("#rows_s").innerHTML = adS.map((a, i) => `<div class="arow">
       <span class="n">Aditivo ${pad2(i + 1)}</span>
-      <input data-s="${i}" data-k="valor" type="number" step="0.01" placeholder="Valor (R$)" value="${esc(a.valor)}">
+      <input data-s="${i}" data-k="valor" class="money" inputmode="decimal" placeholder="Valor (R$) 0,00" value="${esc(a.valor)}">
       <input data-s="${i}" data-k="obs" placeholder="Descrição (opcional)" value="${esc(a.obs)}">
       <span class="pc" id="pc_s${i}"></span>
       <button class="btn small danger" type="button" data-rs="${i}">✕</button></div>`).join("");
@@ -744,13 +786,13 @@ $("#btnSeed").onclick = async () => {
 $("#btnCsv").onclick = () => {
   const cab = ["Nome", "Tipo", "Localidade", "Situação", "Entregue em", "Andamento", "Nível de atenção", "Pontos", "Nº processo", "Contrato", "Empresa",
     "Valor original", "Nº aditivos serviço", "Valor aditivos", "% aditivada", "Valor atual", "Prazo original (dias)", "Nº aditivos prazo", "Prazo com aditivos (dias)",
-    "Engenheiro fiscal", "Nº notificações", "Medição atual", "Valor medido", "Valor última medição", "Saldo contratual", "% físico", "Latitude", "Longitude", "Observações"];
+    "Engenheiro fiscal", "Nº notificações", "Medição atual", "Valor medido", "Valor última medição", "Saldo contratual", "% físico", "Latitude", "Longitude", "Observações", "Última modificação", "Modificado por"];
   const lin = filtradas().map(([, o]) => {
     const sp = o.situacao === "sem_processo", nvo = nivelObra(o), p = sp && nvo.n.id !== "naoav" ? nvo.p : "", k = calc(o);
     const f2 = (v) => v == null ? "" : String(Math.round(v * 100) / 100).replace(".", ",");
     return [o.nome, o.tipo, o.localidade, SITUACOES[o.situacao]?.nome, o.situacao === "entregue" ? dtBR(o.entregueEm) : "", ANDAMENTOS[o.andamento || ""], sp ? nvo.n.nome : "", p, o.processo, o.contrato, o.empresa,
       f2(k.vo), k.linhas.length, f2(k.vo != null || k.linhas.length ? k.totAd : null), f2(k.pctTotal), f2(k.vAtual), k.prazoOr ?? "", k.adp.length, k.prazoTotal ?? "",
-      o.fiscal, o.notificacoes, o.medicaoAtual, f2(k.vm), f2(nz(o.valorUltimaMedicao)), f2(k.saldo), o.percentual, o.lat, o.lng, o.observacoes];
+      o.fiscal, o.notificacoes, o.medicaoAtual, f2(k.vm), f2(nz(o.valorUltimaMedicao)), f2(k.saldo), o.percentual, o.lat, o.lng, o.observacoes, dtHora(o.atualizadoEm), o.atualizadoPor];
   });
   const csv = [cab, ...lin].map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(";")).join("\r\n");
   const a = document.createElement("a");
